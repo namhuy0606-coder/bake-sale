@@ -37,7 +37,7 @@ def get_orders_sheet():
         return wb.worksheet(ORDERS_TAB)
     except gspread.WorksheetNotFound:
         ws = wb.add_worksheet(title=ORDERS_TAB, rows=2000, cols=8)
-        ws.append_row(["Order #", "Time", "Customer", "Item", "Qty", "Breakdown", "Subtotal (d)", "Order Total (d)"])
+        ws.append_row(["Order #", "Time", "Item", "Qty", "Breakdown", "Subtotal (d)", "Order Total (d)"])
         return ws
 
 def load_menu():
@@ -81,7 +81,6 @@ def save_order(order, order_num):
             ws.append_row([
                 order_num,
                 order["time"],
-                order["customer"],
                 row["name"],
                 row["qty"],
                 row["breakdown"],
@@ -122,7 +121,6 @@ def image_tag(url, height=120):
 if "menu"           not in st.session_state: st.session_state.menu           = load_menu()
 if "quantities"     not in st.session_state: st.session_state.quantities     = {}
 if "edit_mode"      not in st.session_state: st.session_state.edit_mode      = False
-if "customer_name"  not in st.session_state: st.session_state.customer_name  = ""
 if "order_ver"      not in st.session_state: st.session_state.order_ver      = 0
 if "last_order"     not in st.session_state: st.session_state.last_order     = None
 if "order_counter"  not in st.session_state: st.session_state.order_counter  = 1
@@ -134,7 +132,6 @@ def get_qty(i):
 
 def reset_order():
     st.session_state.quantities   = {}
-    st.session_state.customer_name = ""
     st.session_state.last_order   = None
     st.session_state.order_ver   += 1
 
@@ -301,7 +298,7 @@ if st.button("Confirm Order", type="primary", use_container_width=True):
 
 if st.session_state.last_order:
     o = st.session_state.last_order
-    st.success(f"### Order confirmed — {o['customer']}")
+    st.success("Order confirmed")
     st.caption(f"Time: {o['time']}")
     for row in o["items"]:
         if row["price"]:
