@@ -159,7 +159,6 @@ with st.sidebar:
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 st.title("Bake Sale Order")
-st.caption("Select items below, then press Confirm Order.")
 
 col_new, col_edit, col_reload = st.columns(3)
 with col_new:
@@ -270,13 +269,6 @@ for row_indices in rows:
 
 st.divider()
 
-st.session_state.customer_name = st.text_input(
-    "Customer name (optional)",
-    value=st.session_state.customer_name,
-    placeholder="e.g. Nguyen Van A",
-    key=f"cname_{ver}",
-)
-
 if st.button("Confirm Order", type="primary", use_container_width=True):
     ordered = []
     order_total = 0
@@ -292,8 +284,7 @@ if st.button("Confirm Order", type="primary", use_container_width=True):
     if not ordered:
         st.warning("No items selected.")
     else:
-        order = {
-            "customer": st.session_state.customer_name.strip() or "Customer",
+        order = {            
             "time":     datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "items":    ordered,
             "total":    order_total,
