@@ -1,42 +1,98 @@
 import streamlit as st
 import base64
 from pathlib import Path
+from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Bake Sale Order", layout="wide")
 
 IMAGE_DIR = Path(__file__).parent / "images"
 IMAGE_DIR.mkdir(exist_ok=True)
 
-DEFAULT_MENU = [
-    {"name": "Garlic Chili Rice Cracker Ice Cream", "price": 60000, "note": "hop",           "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Ice Cream Mint Tea",                  "price": 0,     "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Mint Brookies",                       "price": 0,     "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Lychee",                              "price": 60000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Macaron Dau / Chanh",                 "price": 50000, "note": "4 mieng=180k",  "image": "", "set_size": 4, "set_price": 180000},
-    {"name": "Dango",                               "price": 30000, "note": "xien",           "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Maleteet",                            "price": 25000, "note": "mieng",          "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Sholeh Zard",                         "price": 50000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Butter Tteok",                        "price": 65000, "note": "hop 5 cai",     "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Brookies",                            "price": 40000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Egg Tart - Vanilla",                  "price": 17000, "note": "cai / 45k x3",  "image": "", "set_size": 3, "set_price": 45000},
-    {"name": "Egg Tart - Matcha",                   "price": 17000, "note": "cai / 45k x3",  "image": "", "set_size": 3, "set_price": 45000},
-    {"name": "Egg Tart - Socola",                   "price": 17000, "note": "cai / 45k x3",  "image": "", "set_size": 3, "set_price": 45000},
-    {"name": "Double Chocolate Muffin",             "price": 40000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Banana Chocochip Muffin",             "price": 40000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Tofu Pudding",                        "price": 60000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Carrot Cake",                         "price": 75000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Tiramisu Banana",                     "price": 80000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Tiramisu Matcha",                     "price": 90000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Mini Basque Burnt Cheesecake",        "price": 30000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Apple Pie",                           "price": 90000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Kheer",                               "price": 50000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Lazy Cake",                           "price": 25000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Qatayef",                             "price": 15000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Kek Batik",                           "price": 27000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-    {"name": "Strawberry Brownie",                  "price": 40000, "note": "",               "image": "", "set_size": 0, "set_price": 0},
-]
+SHEET_ID    = "1HZzW8sFN0AeBa2FhNEpqFyuX6p308Wsip4UFIGCapNA"
+MENU_TAB    = "Menu"
+ORDERS_TAB  = "Orders"
+SCOPES      = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Google Sheets connection ───────────────────────────────────────────────────
+@st.cache_resource
+def get_workbook():
+    creds  = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SHEET_ID)
+
+def get_menu_sheet():
+    wb = get_workbook()
+    try:
+        return wb.worksheet(MENU_TAB)
+    except gspread.WorksheetNotFound:
+        ws = wb.add_worksheet(title=MENU_TAB, rows=200, cols=6)
+        ws.append_row(["name", "price", "set_size", "set_price", "note", "image"])
+        return ws
+
+def get_orders_sheet():
+    wb = get_workbook()
+    try:
+        return wb.worksheet(ORDERS_TAB)
+    except gspread.WorksheetNotFound:
+        ws = wb.add_worksheet(title=ORDERS_TAB, rows=2000, cols=8)
+        ws.append_row(["Order #", "Time", "Customer", "Item", "Qty", "Breakdown", "Subtotal (d)", "Order Total (d)"])
+        return ws
+
+def load_menu():
+    try:
+        ws      = get_menu_sheet()
+        records = ws.get_all_records()
+        menu = []
+        for r in records:
+            menu.append({
+                "name":      str(r.get("name", "")),
+                "price":     int(r.get("price", 0) or 0),
+                "set_size":  int(r.get("set_size", 0) or 0),
+                "set_price": int(r.get("set_price", 0) or 0),
+                "note":      str(r.get("note", "")),
+                "image":     str(r.get("image", "")),
+            })
+        return menu
+    except Exception as e:
+        st.error(f"Could not load menu from Google Sheets: {e}")
+        return []
+
+def save_menu(menu):
+    try:
+        ws = get_menu_sheet()
+        ws.clear()
+        ws.append_row(["name", "price", "set_size", "set_price", "note", "image"])
+        if menu:
+            ws.append_rows([
+                [item["name"], item["price"], item["set_size"], item["set_price"], item["note"], item["image"]]
+                for item in menu
+            ])
+        return True
+    except Exception as e:
+        st.error(f"Could not save menu: {e}")
+        return False
+
+def save_order(order, order_num):
+    try:
+        ws = get_orders_sheet()
+        for row in order["items"]:
+            ws.append_row([
+                order_num,
+                order["time"],
+                order["customer"],
+                row["name"],
+                row["qty"],
+                row["breakdown"],
+                row["subtotal"],
+                order["total"],
+            ])
+        return True
+    except Exception as e:
+        return str(e)
+
+# ── Price helpers ──────────────────────────────────────────────────────────────
 def calc_price(unit_price, set_size, set_price, qty):
     if set_size and set_price and qty >= set_size:
         sets = qty // set_size
@@ -47,8 +103,8 @@ def calc_price(unit_price, set_size, set_price, qty):
 def price_breakdown(unit_price, set_size, set_price, qty):
     if not (set_size and set_price and qty >= set_size):
         return f"{qty} x {unit_price:,}d = {qty * unit_price:,}d"
-    sets = qty // set_size
-    rem  = qty  % set_size
+    sets  = qty // set_size
+    rem   = qty  % set_size
     total = sets * set_price + rem * unit_price
     parts = [f"{sets} set x {set_price:,}d"]
     if rem:
@@ -68,12 +124,13 @@ def image_tag(filename, height=120):
             f'style="width:100%;height:{height}px;object-fit:cover;border-radius:6px;margin-bottom:6px;">')
 
 # ── Session state ──────────────────────────────────────────────────────────────
-if "menu"          not in st.session_state: st.session_state.menu          = [dict(i) for i in DEFAULT_MENU]
-if "quantities"    not in st.session_state: st.session_state.quantities    = {}
-if "edit_mode"     not in st.session_state: st.session_state.edit_mode     = False
-if "customer_name" not in st.session_state: st.session_state.customer_name = ""
-if "order_ver"     not in st.session_state: st.session_state.order_ver     = 0
-if "last_order"    not in st.session_state: st.session_state.last_order    = None
+if "menu"           not in st.session_state: st.session_state.menu           = load_menu()
+if "quantities"     not in st.session_state: st.session_state.quantities     = {}
+if "edit_mode"      not in st.session_state: st.session_state.edit_mode      = False
+if "customer_name"  not in st.session_state: st.session_state.customer_name  = ""
+if "order_ver"      not in st.session_state: st.session_state.order_ver      = 0
+if "last_order"     not in st.session_state: st.session_state.last_order     = None
+if "order_counter"  not in st.session_state: st.session_state.order_counter  = 1
 
 menu = st.session_state.menu
 
@@ -81,15 +138,15 @@ def get_qty(i):
     return st.session_state.quantities.get(i, 0)
 
 def reset_order():
-    st.session_state.quantities    = {}
+    st.session_state.quantities   = {}
     st.session_state.customer_name = ""
-    st.session_state.last_order    = None
-    st.session_state.order_ver    += 1
+    st.session_state.last_order   = None
+    st.session_state.order_ver   += 1
 
-# ── Sidebar: running total ─────────────────────────────────────────────────────
+# ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Running Total")
-    running = 0
+    running  = 0
     any_item = False
     for i in range(len(menu)):
         qty = get_qty(i)
@@ -104,13 +161,12 @@ with st.sidebar:
         st.metric("Total", f"{running:,}d")
     else:
         st.caption("No items selected yet.")
-    # (no revenue history shown)
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 st.title("Bake Sale Order")
 st.caption("Select items below, then press Confirm Order.")
 
-col_new, col_edit = st.columns(2)
+col_new, col_edit, col_reload = st.columns(3)
 with col_new:
     if st.button("New Order", use_container_width=True):
         reset_order()
@@ -119,22 +175,21 @@ with col_edit:
     if st.button("Done Editing" if st.session_state.edit_mode else "Edit Menu", use_container_width=True):
         st.session_state.edit_mode = not st.session_state.edit_mode
         st.rerun()
+with col_reload:
+    if st.button("Reload Menu", use_container_width=True):
+        st.session_state.menu = load_menu()
+        st.rerun()
 
 st.divider()
 
 # ── Edit mode ──────────────────────────────────────────────────────────────────
 if st.session_state.edit_mode:
     st.subheader("Edit Menu Items")
-    st.caption("Columns: Name  |  Unit price  |  Set size  |  Set price  |  Note  |  Image")
+    st.caption("Name  |  Unit price  |  Set size  |  Set price  |  Note  |  Image file")
 
-    IMAGE_EXTS   = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-    folder_imgs  = sorted(f.name for f in IMAGE_DIR.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS)
-    img_options  = ["(none)"] + folder_imgs
-
-    if folder_imgs:
-        st.caption(f"Images folder: {', '.join(folder_imgs)}")
-    else:
-        st.caption("No images found. Put image files in the `images/` folder next to `bake_sale.py`.")
+    IMAGE_EXTS  = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    folder_imgs = sorted(f.name for f in IMAGE_DIR.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS)
+    img_options = ["(none)"] + folder_imgs
 
     for i, item in enumerate(menu):
         with st.container(border=True):
@@ -170,12 +225,20 @@ if st.session_state.edit_mode:
     with ne: new_note      = st.text_input("Note",         key="new_note")
     if st.button("Add item"):
         if new_name.strip():
-            st.session_state.menu.append({"name": new_name.strip(), "price": new_price,
+            st.session_state.menu.append({
+                "name": new_name.strip(), "price": new_price,
                 "set_size": new_set_size, "set_price": new_set_price,
-                "note": new_note.strip(), "image": ""})
+                "note": new_note.strip(), "image": ""
+            })
             st.rerun()
         else:
             st.warning("Please enter a name.")
+
+    st.divider()
+    if st.button("Save Menu to Google Sheets", type="primary", use_container_width=True):
+        with st.spinner("Saving to Google Sheets..."):
+            if save_menu(st.session_state.menu):
+                st.success("Menu saved! All users will see the updated menu on next Reload.")
     st.stop()
 
 # ── Order grid ─────────────────────────────────────────────────────────────────
@@ -220,7 +283,6 @@ st.session_state.customer_name = st.text_input(
 )
 
 if st.button("Confirm Order", type="primary", use_container_width=True):
-    from datetime import datetime
     ordered = []
     order_total = 0
     for i in range(len(menu)):
@@ -235,13 +297,21 @@ if st.button("Confirm Order", type="primary", use_container_width=True):
     if not ordered:
         st.warning("No items selected.")
     else:
-        st.session_state.last_order = {
+        order = {
             "customer": st.session_state.customer_name.strip() or "Customer",
             "time":     datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "items":    ordered,
             "total":    order_total,
         }
-        st.rerun()
+        order_num = st.session_state.order_counter
+        with st.spinner("Saving order to Google Sheets..."):
+            result = save_order(order, order_num)
+        if result is True:
+            st.session_state.order_counter += 1
+            st.session_state.last_order = order
+            st.rerun()
+        else:
+            st.error(f"Could not save order: {result}")
 
 if st.session_state.last_order:
     o = st.session_state.last_order
