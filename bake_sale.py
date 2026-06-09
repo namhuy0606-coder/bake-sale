@@ -111,17 +111,12 @@ def price_breakdown(unit_price, set_size, set_price, qty):
         parts.append(f"{rem} x {unit_price:,}d")
     return " + ".join(parts) + f" = {total:,}d"
 
-def image_tag(filename, height=120):
-    if not filename:
+def image_tag(url, height=120):
+    if not url:
         return ""
-    p = IMAGE_DIR / filename
-    if not p.exists():
-        return ""
-    ext  = p.suffix.lower().lstrip(".")
-    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(ext, "jpeg")
-    b64  = base64.b64encode(p.read_bytes()).decode()
-    return (f'<img src="data:image/{mime};base64,{b64}" '
-            f'style="width:100%;height:{height}px;object-fit:cover;border-radius:6px;margin-bottom:6px;">')
+    if str(url).startswith("http"):
+        return f'<img src="{url}" style="width:100%;height:{height}px;object-fit:cover;border-radius:6px;margin-bottom:6px;">'
+    return ""
 
 # ── Session state ──────────────────────────────────────────────────────────────
 if "menu"           not in st.session_state: st.session_state.menu           = load_menu()
@@ -208,12 +203,12 @@ if st.session_state.edit_mode:
 
             ic1, ic2 = st.columns([2, 1])
             with ic1:
-                current = item["image"] if item["image"] in folder_imgs else "(none)"
-                chosen  = st.selectbox("Image", options=img_options, index=img_options.index(current), key=f"img_{i}")
-                menu[i]["image"] = "" if chosen == "(none)" else chosen
+                # Đổi thành ô nhập văn bản để dán/sửa link URL ảnh
+                menu[i]["image"] = st.text_input("Image URL", value=item.get("image", ""), key=f"img_{i}", label_visibility="collapsed")
             with ic2:
-                if menu[i]["image"] and (IMAGE_DIR / menu[i]["image"]).exists():
-                    st.image(str(IMAGE_DIR / menu[i]["image"]), width=100)
+                # Hiển thị ảnh xem trước nếu đó là link hợp lệ
+                if str(menu[i]["image"]).startswith("http"):
+                    st.image(menu[i]["image"], width=100)
 
     st.divider()
     st.subheader("Add New Item")
